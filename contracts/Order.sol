@@ -37,9 +37,22 @@ contract Order is Ownable, AccessControl{
     mapping(address => OrderStruct[]) public orderOfSeller;
 
     event OrderAdded(uint indexed orderId, uint itemId, uint amount, address sellerAddress, address buyerAddress, string buyerLocation);
+    event OrderUpdatedBySeller(uint orderId, address sellerAddress, address buyerAddress, State _toState);
+
+    event OrderUpdatedByBuyer(uint orderId, address sellerAddress, address buyerAddress, State _toState);
 
     modifier onlyCaller() {
         require(hasRole(CALLERS, msg.sender), "Not Allowed to call this function");
+        _;
+    }
+
+    modifier onlySeller(uint _orderId) {
+        require(orders[_orderId].sellerAddress != msg.sender, "You are not the seller and not allowed");
+        _;
+    }
+
+    modifier onlyBuyer(uint _orderId) {
+        require(orders[_orderId].buyerAddress != msg.sender, "You are not the buyer and not allowed");
         _;
     }
 
@@ -70,7 +83,7 @@ contract Order is Ownable, AccessControl{
         require(_sellerAddress == address(0), "Item Not Found");
 
         require(keccak256(abi.encodePacked(_itemState)) != keccak256(abi.encodePacked("Active")), "Product is not available");
-        require(_price != msg.value, "Invalid amount to be staked");
+        require(_price != msg.value, "Invalid amount to be deposited");
         
         require(bytes(_buyerLocationAddress).length > 1100, "Address Should be smaller than 1100 chrachter");
 
@@ -92,6 +105,9 @@ contract Order is Ownable, AccessControl{
         orderOfBuyer[msg.sender].push(_order);
         orderOfSeller[msg.sender].push(_order);
 
+       _itemContract.updateItemState(_itemId, "Deactivated");
+
+
         emit OrderAdded(orderCount.current() - 1, _itemIdGet, msg.value, _sellerAddress, msg.sender, _buyerLocationAddress);
 
         return true;
@@ -103,6 +119,9 @@ contract Order is Ownable, AccessControl{
         string memory orderState;
 
         OrderStruct memory _order = orders[_orderId];
+
+        // For check if order exist or not with address default value
+        require(_order.buyerAddress == address(0), "Order Not Found");
 
         if (_order.state == State.PendStake) {
             orderState = "Pending Stake";
@@ -145,4 +164,46 @@ contract Order is Ownable, AccessControl{
 
         return (true);
      }
+    
+    function updateOrderBySeller(uint _orderId, string memory _state) public onlySeller(_orderId)
+        returns (bool)
+      { 
+        string memory orderState;
+
+        OrderStruct storage _order = orders[_orderId];
+
+        // For check if order exist or not with address default value
+        require(_order.sellerAddress == address(0), "Order Not Found");
+
+        if (keccak256(abi.encodePacked("Confirmed")) == keccak256(abi.encodePacked(_state))) {
+            orderState = State.Confirmed;
+
+        } else if (keccak256(abi.encodePacked("Cancelled")) == keccak256(abi.encodePacked(_state))) {
+            orderState = State.Cancelled;
+        } else {
+            orderState = State.Posted;
+        }
+
+        _order.state = orderState;
+
+        emit OrderUpdatedBySeller(_orderId, _order.sellerAddress, _order.buyerAddress, orderState);
+
+        return (true);
+     }
+
+    function updateOrderByBuyer(uint _orderId, string memory _state) public onlyBuyer(_orderId)
+        returns (bool)
+      {
+        OrderStruct storage _order = orders[_orderId];
+
+        // For check if order exist or not with address default value
+        require(_order.sellerAddress == address(0), "Order Not Found");
+
+        _order.state = State.Delivered;
+
+        emit OrderUpdatedByBuyer(_orderId, _order.sellerAddress, _order.buyerAddress, _order.state);
+
+        return (true);
+    }
 }
+
