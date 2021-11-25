@@ -12,7 +12,7 @@ contract Item is Ownable, AccessControl{
     
     bytes32 public constant CALLERS = keccak256("CALLER");
 
-    enum State {Active, Deactivated, PendStatke}
+    enum State {Active, Deactivated, PendStatke, Deleted, Sold}
 
     Counters.Counter public itemCount;
     
@@ -37,6 +37,11 @@ contract Item is Ownable, AccessControl{
 
     modifier onlyCaller() {
         require(hasRole(CALLERS, msg.sender), "Not Allowed to call this function");
+        _;
+    }
+
+    modifier onlySeller(uint _itemId) {
+        require(items[_itemId].sellerAddress != msg.sender, "You are not the seller and not allowed");
         _;
     }
 
@@ -105,10 +110,17 @@ contract Item is Ownable, AccessControl{
 
         ItemStruct memory _item = items[_itemId];
 
+        // For check if item exist or not with address default value
+        require(_item.sellerAddress == address(0), "Item Not Found");
+
         if (_item.state == State.PendStatke) {
             itemState = "Pending Stake";
         } else if (_item.state == State.Active) {
             itemState = "Active";
+        } else if (_item.state == State.Deleted) {
+            itemState = "Deleted";
+        } else if (_item.state == State.Sold) {
+            itemState = "Sold";
         } else {
             itemState = "Deactivated";
         }
@@ -126,13 +138,33 @@ contract Item is Ownable, AccessControl{
         if (keccak256(abi.encodePacked("Pending Stake")) == keccak256(abi.encodePacked(_state))) {
             itemState = State.PendStatke;
         } else if (keccak256(abi.encodePacked("Active")) == keccak256(abi.encodePacked(_state))) {
+            require(_item.state == State.Deleted, "You can not Activate a deleted post");
+
             itemState = State.Active;
+        } else if (keccak256(abi.encodePacked("Sold")) == keccak256(abi.encodePacked(_state))) {
+            itemState = State.Sold;
+
         } else if (keccak256(abi.encodePacked("Deactivated")) == keccak256(abi.encodePacked(_state))) {
             itemState = State.Deactivated;
+        } else {
+            revert("Invalid State");
         }
 
         _item.state = itemState;
 
         return (true);
      }
+    
+    function deleteItemBySeller(uint _itemId) external onlySeller(_itemId)
+      returns (bool)
+      { 
+        ItemStruct storage _item = items[_itemId];
+
+        require(_item.state != State.Active, "You can not delete this item");
+
+        _item.state = State.Deleted;
+
+        return (true);
+     }
 }
+
