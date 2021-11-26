@@ -72,8 +72,8 @@ contract Escrow is Ownable, AccessControl{
 
         escrowCount.increment();
 
-        escrowOfBuyer[msg.sender][_orderId] = _escrow ;
-        escrowOfSeller[msg.sender][_orderId] = _escrow ;
+        escrowOfBuyer[_buyerAddress][_orderId] = _escrow ;
+        escrowOfSeller[_sellerAddress][_orderId] = _escrow ;
 
         emit EscrowDeposited(escrowCount.current() - 1, _orderId, msg.value, _sellerAddress, _buyerAddress, block.timestamp);
 

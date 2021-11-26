@@ -22,6 +22,7 @@ contract Order is Ownable, AccessControl{
     Counters.Counter public orderCount;
     
     struct OrderStruct {
+        uint Id;
         uint itemId;
         uint amount;
         State state;
@@ -30,6 +31,8 @@ contract Order is Ownable, AccessControl{
         address payable buyerAddress;
         string buyerEmail;
         string sellerEmail;
+        uint orderOfBuyerIndex;
+        uint orderOfSellerIndex;
     }
 
     mapping(uint => OrderStruct) public orders;
@@ -91,6 +94,7 @@ contract Order is Ownable, AccessControl{
         require(bytes(_buyerLocationAddress).length > 1100, "Address Should be smaller than 1100 chrachter");
 
         OrderStruct memory _order = OrderStruct({
+        Id: orderCount.current(),
         itemId: _itemIdGet,
         amount: msg.value,
         state: State.PendStake,
@@ -98,7 +102,9 @@ contract Order is Ownable, AccessControl{
         sellerAddress: payable(_sellerAddress),
         buyerAddress: payable(msg.sender),
         buyerEmail: _buyerEmail,
-        sellerEmail: _sellerEmail
+        sellerEmail: _sellerEmail,
+        orderOfBuyerIndex: orderOfBuyer[msg.sender].length,
+        orderOfSellerIndex: orderOfSeller[_sellerAddress].length 
         });
         
         orders[orderCount.current()] = _order;
@@ -172,10 +178,14 @@ contract Order is Ownable, AccessControl{
 
         _order.state = orderState;
 
+        orderOfSeller[_order.sellerAddress][_order.orderOfSellerIndex].state = orderState;
+
+        orderOfBuyer[_order.buyerAddress][_order.orderOfBuyerIndex].state = orderState;
+
         return (true);
      }
     
-    function updateOrderBySeller(uint _orderId, string memory _state) public onlySeller(_orderId)
+    function updateOrderBySeller(uint _orderId, string memory _state) external onlySeller(_orderId)
         returns (bool)
       { 
         State  orderState;
@@ -201,6 +211,10 @@ contract Order is Ownable, AccessControl{
 
         _order.state = orderState;
 
+        orderOfSeller[_order.sellerAddress][_order.orderOfSellerIndex].state = orderState;
+
+        orderOfBuyer[_order.buyerAddress][_order.orderOfBuyerIndex].state = orderState;
+
         emit OrderUpdatedBySeller(_orderId, _order.sellerAddress, _order.buyerAddress, orderState);
 
         return (true);
@@ -215,6 +229,11 @@ contract Order is Ownable, AccessControl{
         require(_order.sellerAddress == address(0), "Order Not Found");
 
         _order.state = State.Delivered;
+
+        orderOfSeller[_order.sellerAddress][_order.orderOfSellerIndex].state = State.Delivered;
+
+        orderOfBuyer[_order.buyerAddress][_order.orderOfBuyerIndex].state = State.Delivered;
+
         _escrowContract.withdrawEscrowToSeller(_orderId, _order.sellerAddress);
         _itemContract.updateItemState(_order.itemId, "Sold");
 

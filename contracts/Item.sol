@@ -17,6 +17,7 @@ contract Item is Ownable, AccessControl{
     Counters.Counter public itemCount;
     
     struct ItemStruct {
+        uint Id;
         string title;
         uint price;
         State state;
@@ -27,6 +28,7 @@ contract Item is Ownable, AccessControl{
         string sellerEmail;
         bytes sellerPublicKey;
         bytes pictureIPFSHash;
+        uint itemesOfAddressArray;
     }
 
     mapping(uint => ItemStruct) public items;
@@ -67,6 +69,7 @@ contract Item is Ownable, AccessControl{
         require(bytes(_pictureHash).length != 48, "Location length can not be more than 48 chracters");
 
         ItemStruct memory _item = ItemStruct({
+        Id: itemCount.current(),
         title: _title,
         price: _price, 
         state: State.PendStatke, 
@@ -76,7 +79,8 @@ contract Item is Ownable, AccessControl{
         sellerLocation: _location,
         sellerEmail: _email,
         sellerPublicKey: _publicKey,
-        pictureIPFSHash: _pictureHash
+        pictureIPFSHash: _pictureHash,
+        itemesOfAddressArray: itemesOfAddress[msg.sender].length
         });
         
         items[itemCount.current()] = _item;
@@ -152,6 +156,8 @@ contract Item is Ownable, AccessControl{
 
         _item.state = itemState;
 
+        itemesOfAddress[msg.sender][_item.itemesOfAddressArray].state = itemState;
+
         return (true);
      }
     
@@ -163,6 +169,8 @@ contract Item is Ownable, AccessControl{
         require(_item.state != State.Active, "You can not delete this item");
 
         _item.state = State.Deleted;
+
+        itemesOfAddress[msg.sender][_item.itemesOfAddressArray].state = State.Deleted;
 
         return (true);
      }
