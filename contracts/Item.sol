@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.4.22 <0.9.0;
 
+import "./Stake.sol";
+
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-
 
 
 contract Item is Ownable, AccessControl{
@@ -12,9 +13,11 @@ contract Item is Ownable, AccessControl{
     
     bytes32 public constant CALLERS = keccak256("CALLER");
 
-    enum State {Active, Deactivated, PendStatke, Deleted, Sold}
+    enum State {Active, Deactivated, Deleted, Sold}
 
     Counters.Counter public itemCount;
+
+    Stake public _stakeContract;
     
     struct ItemStruct {
         uint Id;
@@ -22,9 +25,9 @@ contract Item is Ownable, AccessControl{
         uint price;
         State state;
         string description;
-        uint256 createdAt;
         address payable sellerAddress;
-        string sellerLocation;
+        string sellerCountry;
+        string sellerCity;
         string sellerEmail;
         string sellerPublicKey;
         string pictureIPFSHash;
@@ -43,8 +46,12 @@ contract Item is Ownable, AccessControl{
     }
 
     modifier onlySeller(uint _itemId) {
-        require(items[_itemId].sellerAddress != msg.sender, "You are not the seller and not allowed");
+        require(items[_itemId].sellerAddress == msg.sender, "You are not the seller and not allowed");
         _;
+    }
+
+    constructor(Stake _addressStake) {
+        _stakeContract = _addressStake;
     }
 
     function addRoles(address _address) public onlyOwner {
@@ -55,28 +62,31 @@ contract Item is Ownable, AccessControl{
         string memory _title,
         uint _price,
         string memory _description,
-        string memory _location,
+        string memory _country,
+        string memory _city,
         string memory _email,
         string memory _publicKey,
         string memory _pictureHash
-      ) public returns (bool) {
+      ) public payable returns (bool) {
 
         require(bytes(_title).length < 40, "Title length can not be more than 40 chracters");
         require(bytes(_description).length < 350, "Description length can not be more than 350 chracters");
-        require(bytes(_location).length < 50, "Location length can not be more than 50 chracters");
+        require(bytes(_country).length < 20, "Country length can not be more than 20 chracters");
+        require(bytes(_country).length < 20, "Country length can not be more than 20 chracters");
         // Should validate email
-        require(bytes(_publicKey).length == 44, "Public key length can not be more than 128 chracters");
-        require(bytes(_pictureHash).length == 46, "Location length can not be more than 48 chracters");
+        require(bytes(_publicKey).length == 44, "Public key length can not be more than 44 chracters");
+        require(bytes(_pictureHash).length == 46, "Location length can not be more than 46 chracters");
+        require(_price == msg.value, "Not Enough Ether value to be staked");
 
         ItemStruct memory _item = ItemStruct({
         Id: itemCount.current(),
         title: _title,
         price: _price, 
-        state: State.PendStatke, 
+        state: State.Active, 
         description: _description,
-        createdAt: block.timestamp,
-        sellerAddress: payable(msg.sender), 
-        sellerLocation: _location,
+        sellerAddress: payable(msg.sender),
+        sellerCountry: _country,
+        sellerCity: _city,
         sellerEmail: _email,
         sellerPublicKey: _publicKey,
         pictureIPFSHash: _pictureHash,
@@ -88,26 +98,42 @@ contract Item is Ownable, AccessControl{
         itemCount.increment();
 
         itemesOfAddress[msg.sender].push(_item);
+        _stakeContract._stakeForItem{value: msg.value}(_item.Id, msg.sender);
 
         emit ItemAdded(itemCount.current() - 1, _item.title, _item.state, _item.sellerAddress);
 
         return true;
   }
 
-    function fetchItem(uint _itemId) public view
-     returns (string memory name, uint price, uint state, address seller, string memory _email, string memory _publicKey)
+    function fetchItem(uint _itemId) external view
+     returns (
+        string memory name,
+        uint price,
+        uint state,
+        address seller,
+        string memory _email,
+        string memory _publicKey,
+        string memory _pictureHash, 
+        string memory _country, 
+        string memory _city
+    )
       {
+        ItemStruct memory _item = items[_itemId];
+
         return (
-                items[_itemId].title,
-                items[_itemId].price,
-                uint(items[_itemId].state),
-                items[_itemId].sellerAddress,
-                items[_itemId].sellerEmail,
-                items[_itemId].sellerPublicKey
+                _item.title,
+                _item.price,
+                uint(_item.state),
+                _item.sellerAddress,
+                _item.sellerEmail,
+                _item.sellerPublicKey,
+                _item.pictureIPFSHash,
+                _item.sellerCountry,
+                _item.sellerCity
             );
        }
 
-    function getItemIdStaking(uint _itemId) external view onlyCaller
+    function getItemForOrder(uint _itemId) external view onlyCaller
      returns (uint itemId, uint price, string memory state, address seller, string memory sellerEmail, string memory sellerPublicKey)
       { 
         string memory itemState;
@@ -115,11 +141,9 @@ contract Item is Ownable, AccessControl{
         ItemStruct memory _item = items[_itemId];
 
         // For check if item exist or not with address default value
-        require(_item.sellerAddress == address(0), "Item Not Found");
+        require(_item.sellerAddress != address(0), "Item Not Found");
 
-        if (_item.state == State.PendStatke) {
-            itemState = "Pending Stake";
-        } else if (_item.state == State.Active) {
+        if (_item.state == State.Active) {
             itemState = "Active";
         } else if (_item.state == State.Deleted) {
             itemState = "Deleted";
@@ -139,9 +163,7 @@ contract Item is Ownable, AccessControl{
 
         ItemStruct storage _item = items[_itemId];
 
-        if (keccak256(abi.encodePacked("Pending Stake")) == keccak256(abi.encodePacked(_state))) {
-            itemState = State.PendStatke;
-        } else if (keccak256(abi.encodePacked("Active")) == keccak256(abi.encodePacked(_state))) {
+        if (keccak256(abi.encodePacked("Active")) == keccak256(abi.encodePacked(_state))) {
             require(_item.state != State.Deleted, "You can not Activate a deleted post");
 
             itemState = State.Active;
@@ -150,13 +172,14 @@ contract Item is Ownable, AccessControl{
 
         } else if (keccak256(abi.encodePacked("Deactivated")) == keccak256(abi.encodePacked(_state))) {
             itemState = State.Deactivated;
+
         } else {
             revert("Invalid State");
         }
 
         _item.state = itemState;
 
-        itemesOfAddress[msg.sender][_item.itemesOfAddressArray].state = itemState;
+        itemesOfAddress[_item.sellerAddress][_item.itemesOfAddressArray].state = itemState;
 
         return (true);
      }
