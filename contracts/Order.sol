@@ -3,6 +3,7 @@ pragma solidity >=0.4.22 <0.9.0;
 
 import "./Item.sol";
 import "./Escrow.sol";
+import "./Stake.sol";
 
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
@@ -14,10 +15,11 @@ contract Order is Ownable, AccessControl{
 
     Item public _itemContract;
     Escrow public _escrowContract;
+    Stake public _stakeContract;
     
     bytes32 public constant CALLERS = keccak256("CALLER");
 
-    enum State {Confirmed, Cancelled, PendConfirm, PendStake, Posted, Delivered}
+    enum State {Confirmed, Cancelled, PendConfirm, Posted, Delivered}
 
     Counters.Counter public orderCount;
     
@@ -46,24 +48,33 @@ contract Order is Ownable, AccessControl{
 
     event OrderDeliveryConfirmed(uint orderId, address sellerAddress, address buyerAddress, uint deliveryTime);
 
+    event OrderAdded2(uint value);
+    
+    event calledUpdateItemState(uint value);
+
+    event calledStake(uint value);
+
+    event calledEscrow(uint value);
+
     modifier onlyCaller() {
         require(hasRole(CALLERS, msg.sender), "Not Allowed to call this function");
         _;
     }
 
     modifier onlySeller(uint _orderId) {
-        require(orders[_orderId].sellerAddress != msg.sender, "You are not the seller and not allowed");
+        require(orders[_orderId].sellerAddress == msg.sender, "You are not the seller and not allowed");
         _;
     }
 
     modifier onlyBuyer(uint _orderId) {
-        require(orders[_orderId].buyerAddress != msg.sender, "You are not the buyer and not allowed");
+        require(orders[_orderId].buyerAddress == msg.sender, "You are not the buyer and not allowed");
         _;
     }
 
-    constructor(Item _addressItem, Escrow _addressEscrow) {
+    constructor(Item _addressItem, Escrow _addressEscrow, Stake _addressStake) {
         _itemContract = _addressItem;
         _escrowContract = _addressEscrow;
+        _stakeContract = _addressStake;
     }
     
     function addRoles(address _address) public onlyOwner {
@@ -83,21 +94,18 @@ contract Order is Ownable, AccessControl{
             string memory  _sellerEmail,
             // Think Abount Use the below varivale
             string memory _itemPublicKey
-        ) = _itemContract.getItemIdStaking(_itemId);
-        
-            // For check if item exist or not with address default value
-        require(_sellerAddress != address(0), "Item Not Found");
+        ) = _itemContract.getItemForOrder(_itemId);
 
         require(keccak256(abi.encodePacked(_itemState)) == keccak256(abi.encodePacked("Active")), "Item is not available");
-        require(_price == msg.value, "Invalid amount to be deposited");
+        require((_price * 2) == msg.value, "Invalid amount to be deposited");
         
         require(bytes(_buyerLocationAddress).length < 1100, "Address Should be smaller than 1100 chrachter");
 
         OrderStruct memory _order = OrderStruct({
         Id: orderCount.current(),
         itemId: _itemIdGet,
-        amount: msg.value,
-        state: State.PendStake,
+        amount: _price,
+        state: State.PendConfirm,
         createdAt: block.timestamp,
         sellerAddress: payable(_sellerAddress),
         buyerAddress: payable(msg.sender),
@@ -112,79 +120,26 @@ contract Order is Ownable, AccessControl{
         orderCount.increment();
 
         orderOfBuyer[msg.sender].push(_order);
-        orderOfSeller[msg.sender].push(_order);
+        orderOfSeller[_sellerAddress].push(_order);
+
+        emit OrderAdded2(_order.amount);
+
 
        _itemContract.updateItemState(_itemId, "Deactivated");
-       _escrowContract.depositEscrow{value: msg.value}(orderCount.current() - 1, _sellerAddress, msg.sender);
+       emit calledUpdateItemState(_order.amount);
+
+       _stakeContract._stakeForOrder{value: msg.value - _price}(_order.Id, msg.sender);
+        emit calledStake(msg.value - _price);
+
+       _escrowContract.depositEscrow{value: msg.value - _price}(orderCount.current() - 1, _sellerAddress, msg.sender);
+        emit calledEscrow(msg.value - _price);
 
 
-        emit OrderAdded(orderCount.current() - 1, _itemIdGet, msg.value, _sellerAddress, msg.sender, _buyerLocationAddress);
+        emit OrderAdded(orderCount.current() - 1, _itemIdGet, _price, _sellerAddress, msg.sender, _buyerLocationAddress);
 
         return true;
   }
 
-    function getOrderIdStaking(uint _orderId) external view onlyCaller
-     returns (uint orderId, uint amount, string memory state, address buyer)
-      { 
-        string memory orderState;
-
-        OrderStruct memory _order = orders[_orderId];
-
-        // For check if order exist or not with address default value
-        require(_order.buyerAddress != address(0), "Order Not Found");
-
-        if (_order.state == State.PendStake) {
-            orderState = "Pending Stake";
-
-        } else if (_order.state  == State.Cancelled) {
-            orderState = "Cancelled";
-        } else if (_order.state  == State.Delivered) {
-            orderState = "Delivered";
-        } else {
-            orderState = "Not Available";
-        }
-
-
-        return (orderId, _order.amount, orderState, _order.buyerAddress);
-     }
-      
-    function updateOrderState(uint _orderId, string memory _state) external onlyCaller
-     returns (bool)
-      { 
-        State orderState;
-
-        // {Confirmed, Cancelled, PendConfirm, PendStake, Posted, Delivered}
-
-        OrderStruct storage _order = orders[_orderId];
-
-        if (keccak256(abi.encodePacked("Pending Stake")) == keccak256(abi.encodePacked(_state))) {
-            orderState = State.PendStake;
-
-        } else if (keccak256(abi.encodePacked("Pend Confirm")) == keccak256(abi.encodePacked(_state))) {
-            orderState = State.PendConfirm;
-
-        } else if (keccak256(abi.encodePacked("Confirmed")) == keccak256(abi.encodePacked(_state))) {
-            orderState = State.Confirmed;
-
-        } else if (keccak256(abi.encodePacked("Cancelled")) == keccak256(abi.encodePacked(_state))) {
-            orderState = State.Cancelled;
-
-        } else if (keccak256(abi.encodePacked("Posted")) == keccak256(abi.encodePacked(_state))) {
-            orderState = State.Posted;
-
-        } else if (keccak256(abi.encodePacked("Delivered")) == keccak256(abi.encodePacked(_state))) {
-            orderState = State.Delivered;
-        }
-
-        _order.state = orderState;
-
-        orderOfSeller[_order.sellerAddress][_order.orderOfSellerIndex].state = orderState;
-
-        orderOfBuyer[_order.buyerAddress][_order.orderOfBuyerIndex].state = orderState;
-
-        return (true);
-     }
-    
     function updateOrderBySeller(uint _orderId, string memory _state) external onlySeller(_orderId)
         returns (bool)
       { 
@@ -193,7 +148,7 @@ contract Order is Ownable, AccessControl{
         OrderStruct storage _order = orders[_orderId];
 
         // For check if order exist or not with address default value
-        require(_order.sellerAddress == address(0), "Order Not Found");
+        require(_order.sellerAddress != address(0), "Order Not Found");
 
         if (keccak256(abi.encodePacked("Confirmed")) == keccak256(abi.encodePacked(_state))) {
             orderState = State.Confirmed;
@@ -203,7 +158,9 @@ contract Order is Ownable, AccessControl{
 
         } else if (keccak256(abi.encodePacked("Cancelled")) == keccak256(abi.encodePacked(_state))) {
             orderState = State.Cancelled;
+            _itemContract.updateItemState(_order.itemId, "Active");
             _escrowContract.refundEscrowToBuyer(_orderId, _order.buyerAddress);
+            _stakeContract.refundStakeToBuyer(_orderId, _order.buyerAddress);
 
         } else {
             revert("Invalid State");
@@ -236,6 +193,9 @@ contract Order is Ownable, AccessControl{
 
         _escrowContract.withdrawEscrowToSeller(_orderId, _order.sellerAddress);
         _itemContract.updateItemState(_order.itemId, "Sold");
+        _stakeContract.refundStakeToBuyer(_orderId, _order.buyerAddress);
+        _stakeContract.refundStakeToSeller(_orderId, _order.sellerAddress);
+
 
         emit OrderDeliveryConfirmed(_orderId, _order.sellerAddress, _order.buyerAddress, block.timestamp);
 

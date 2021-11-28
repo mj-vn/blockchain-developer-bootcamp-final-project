@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.4.22 <0.9.0;
 
-import "./Stake.sol";
-
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -12,14 +10,13 @@ contract Escrow is Ownable, AccessControl{
     using Counters for Counters.Counter;
 
     bytes32 public constant CALLERS = keccak256("CALLER");
-
-    Stake public _stakeContract;
     
     enum State {Deposited, Withdrawed}
 
     Counters.Counter public escrowCount;
     
     struct EscrowStruct {
+        uint Id;
         uint orderId;
         uint amount;
         State state;
@@ -45,10 +42,6 @@ contract Escrow is Ownable, AccessControl{
         _;
     }
 
-    constructor(Stake _addressStake) {
-        _stakeContract = _addressStake;
-    }
-
     function addRoles(address _address) public onlyOwner {
           _setupRole(CALLERS, _address);
     }
@@ -60,6 +53,7 @@ contract Escrow is Ownable, AccessControl{
       ) external payable onlyCaller returns (bool) {
 
         EscrowStruct memory _escrow = EscrowStruct({
+        Id: escrowCount.current(),
         orderId: _orderId,
         amount: msg.value,
         state: State.Deposited,
@@ -93,7 +87,8 @@ contract Escrow is Ownable, AccessControl{
         require(sent, "Failed to send Ether");
 
         _escrow.state = State.Withdrawed;
-        _stakeContract.refundStakeToBuyerBySeller(_orderId, _buyerAddress);
+        escrowOfSeller[_escrow.sellerAddress][_orderId].state = State.Withdrawed;
+        escrows[_escrow.Id].state = State.Withdrawed;
 
         emit EscrowRefunded(escrowCount.current() - 1, _orderId, _escrow.amount, _escrow.sellerAddress, _buyerAddress, block.timestamp);
 
@@ -113,6 +108,8 @@ contract Escrow is Ownable, AccessControl{
         require(sent, "Failed to send Ether");
 
         _escrow.state = State.Withdrawed;
+        escrowOfBuyer[_escrow.buyerAddress][_orderId].state = State.Withdrawed;
+        escrows[_escrow.Id].state = State.Withdrawed;
 
         emit EscrowWithdrawed(escrowCount.current() - 1, _orderId, _escrow.amount, _escrow.sellerAddress, _escrow.buyerAddress, block.timestamp);
 
