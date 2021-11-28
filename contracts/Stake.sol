@@ -1,41 +1,51 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.4.22 <0.9.0;
 
-import "./Item.sol";
-import "./Order.sol";
-
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+
 
 contract Stake is Ownable, AccessControl{
+    using Counters for Counters.Counter;
 
     bytes32 public constant CALLERS = keccak256("CALLER");
 
-
-    Item public _itemContract;
-    Order public _orderContract;
+    Counters.Counter public stakeCount;
     
     enum State {Deposited, Withdrawed}
     
     struct SellStake{
+        uint Id;
         address payable user;
         uint amount;
         State state;
         uint depositeDate;
         uint itemId;
+        uint sellStakesOfSellerIndex;
     }
 
     struct BuyStake{
+        uint Id;
         address payable user;
         uint amount;
         State state;
         uint depositeDate;
         uint orderId;
+        uint buyStakesOfBuyerIndex;
     }
-
-    mapping(address => mapping(uint => SellStake )) public sellStakes;
     
-    mapping(address => mapping(uint => BuyStake )) public buyStakes;
+    mapping(uint => BuyStake) public buyStakes;
+
+    mapping(uint => SellStake) public sellStakes;
+
+    mapping(uint => uint) public buyStakesIdOrderId;
+
+    mapping(uint => uint) public sellStakesIdItemId;
+
+    mapping(address => SellStake[] ) public sellStakesOfSeller;
+    
+    mapping(address => BuyStake[]) public buyStakesOfBuyer;
 
     event SellStakeDeposited(uint itemId, uint amount, address user, uint depositeDate);
 
@@ -50,136 +60,142 @@ contract Stake is Ownable, AccessControl{
         require(hasRole(CALLERS, msg.sender), "Not Allowed to call this function");
         _;
     }
-    
-    constructor(Item _addressItem, Order _addressOrder) {
-        _itemContract = _addressItem;
-        _orderContract = _addressOrder;
-    }
 
     function addRoles(address _address) public onlyOwner {
           _setupRole(CALLERS, _address);
     }
     
-    function _stakeForItem(uint _itemId) public payable returns(bool) {
-    (uint itemId, uint _price, string memory  _itemState, address _sellerAddress, string memory  _sellerEmail, bytes memory _itemPublicKey) = _itemContract.getItemIdStaking(_itemId);
+    function _stakeForItem(uint _itemId, address _sellerAddress) external payable onlyCaller returns(bool) {
 
-    // Check sender address
-    require(_sellerAddress != msg.sender, "Invalid sender or seller address");
-    require(keccak256(abi.encodePacked(_itemState)) != keccak256(abi.encodePacked("Pending Stake")), "Invalid state for item");
-    require(_price != msg.value, "Invalid amount to be staked");
-    
-    sellStakes[msg.sender][itemId] = SellStake({
-        user: payable(msg.sender), 
+    SellStake memory _stake = SellStake({
+        Id: stakeCount.current(),
+        user: payable(_sellerAddress), 
         state: State.Deposited,
         amount: msg.value,
         depositeDate: block.timestamp,  
-        itemId: itemId
+        itemId: _itemId,
+        sellStakesOfSellerIndex: sellStakesOfSeller[_sellerAddress].length
     });
-    _itemContract.updateItemState(_itemId, "Active");
 
-    emit SellStakeDeposited(_itemId, msg.value, msg.sender, block.timestamp);
+    sellStakes[stakeCount.current()] = _stake;
+
+    sellStakesIdItemId[_itemId] = stakeCount.current();
+
+    stakeCount.increment();
+
+    sellStakesOfSeller[_sellerAddress].push(_stake);
+
+    emit SellStakeDeposited(_itemId, msg.value, _sellerAddress, block.timestamp);
 
     return true;
 
     }
 
-    function _stakeForOrder(uint _orderId) public payable returns(bool) {
-        (uint orderId, uint _amount, string memory  _orderState, address _buyerAddress) = _orderContract.getOrderIdStaking(_orderId);
-
-        // Check sender address
-        require(_buyerAddress != msg.sender, "Invalid sender or buyer address");
-        require(keccak256(abi.encodePacked(_orderState)) != keccak256(abi.encodePacked("Pending Stake")), "Invalid state for order");
-        require(_amount != msg.value, "Invalid amount to be staked");
-    
-        buyStakes[msg.sender][orderId] = BuyStake({
-            user: payable(msg.sender), 
+    function _stakeForOrder(uint _orderId, address _buyerAddress) external payable onlyCaller returns(bool) {    
+        BuyStake memory _stake = BuyStake({
+            Id: stakeCount.current(),
+            user: payable(_buyerAddress), 
             state: State.Deposited,
             amount: msg.value,
             depositeDate: block.timestamp,  
-            orderId: orderId
+            orderId: _orderId,
+            buyStakesOfBuyerIndex: buyStakesOfBuyer[_buyerAddress].length
         });
-        _orderContract.updateOrderState(_orderId, "Pend Confirm");
 
-        emit BuyStakeDeposited(_orderId, msg.value, msg.sender, block.timestamp);
+        buyStakes[stakeCount.current()] = _stake;
+
+        buyStakesIdOrderId[_orderId] = stakeCount.current();
+
+        stakeCount.increment();
+
+        buyStakesOfBuyer[_buyerAddress].push(_stake);
+
+        emit BuyStakeDeposited(_orderId, msg.value, _buyerAddress, block.timestamp);
 
         return true;
-
     }
 
-    function refundStakeToSeller(uint _itemId) external returns(bool) {
-        (
-            uint itemId,
-            uint _price,
-            string memory  _itemState,
-            address _sellerAddress,
-            string memory  _sellerEmail,
-            bytes memory _itemPublicKey
-            ) = _itemContract.getItemIdStaking(_itemId);
+    function refundStakeToSeller(uint _itemId, address _sellerAddress) external onlyCaller returns(bool) {
+
+        uint _stakeId = sellStakesIdItemId[_itemId];
         
-        require(_sellerAddress != msg.sender, "Invalid sender or seller address");
+        SellStake storage _stake = sellStakes[_stakeId];
 
-        if(
-            keccak256(abi.encodePacked(_itemState)) == keccak256(abi.encodePacked("Sold")) || keccak256(abi.encodePacked(_itemState)) == keccak256(abi.encodePacked("Deleted"))
-        ) {
-
-        SellStake storage _stake = sellStakes[msg.sender][_itemId];
-
-        require(_stake.state == State.Withdrawed, "Already withdrawed");
+        require(_stake.state != State.Withdrawed, "Already withdrawed");
 
         (bool sent, bytes memory data) = _stake.user.call{value: _stake.amount}("");
         require(sent, "Failed to send Ether");
 
         _stake.state = State.Withdrawed;
 
-        emit SellStakeRefunded(_itemId, _stake.amount, msg.sender, block.timestamp);
+        sellStakesOfSeller[_sellerAddress][_stake.sellStakesOfSellerIndex].state = State.Withdrawed;
+
+        emit SellStakeRefunded(_itemId, _stake.amount, _sellerAddress, block.timestamp);
 
         return true;
 
-        } else {
-            return false;
-        }
     }
 
-    function refundStakeToBuyer(uint _orderId) external returns(bool) {
-        (uint orderId, uint _amount, string memory  _orderState, address _buyerAddress) = _orderContract.getOrderIdStaking(_orderId);
+    function refundStakeToBuyer(uint _orderId, address _buyerAddress) external onlyCaller returns (bool) {
 
-        // Check sender address
-        require(_buyerAddress != msg.sender, "Invalid buyer address");
-        if(
-              (keccak256(abi.encodePacked(_orderState)) == keccak256(abi.encodePacked("Cancelled"))) || (keccak256(abi.encodePacked(_orderState)) == keccak256(abi.encodePacked("Delivered")))
-        ) {
-            
-            BuyStake storage _stake = buyStakes[msg.sender][_orderId];
+            uint _stakeId = buyStakesIdOrderId[_orderId];
 
-            require(_stake.state == State.Withdrawed, "Already withdrawed");
+            BuyStake storage _stake = buyStakes[_stakeId];
+
+            require(_stake.state != State.Withdrawed, "Already withdrawed");
 
             (bool sent, bytes memory data) = _stake.user.call{value: _stake.amount}("");
             require(sent, "Failed to send Ether");
 
             _stake.state = State.Withdrawed;
 
-            emit BuyStakeRefunded(_orderId, _stake.amount, msg.sender, block.timestamp);
-            
-            return true;
-        } else {
-            return false;
-        }
-
-    }
-    function refundStakeToBuyerBySeller(uint _orderId, address _buyerAddress) external onlyCaller returns (bool) {
-            BuyStake storage _stake = buyStakes[_buyerAddress][_orderId];
-
-            require(_stake.state == State.Withdrawed, "Already withdrawed");
-
-            (bool sent, bytes memory data) = _stake.user.call{value: _stake.amount}("");
-            require(sent, "Failed to send Ether");
-
-            _stake.state = State.Withdrawed;
+            buyStakesOfBuyer[_buyerAddress][_stake.buyStakesOfBuyerIndex].state = State.Withdrawed;
 
             emit BuyStakeRefunded(_orderId, _stake.amount, _buyerAddress, block.timestamp);
 
             return true;
-
     }
+
+
+    function fetchPageBuyStakes(uint cursor, uint howMany)
+    external
+    view
+    returns (BuyStake[] memory values, uint newCursor)
+    {
+        require(msg.sender != address(0), "Invalid Addresss");
+
+        uint length = howMany;
+        if (length > buyStakesOfBuyer[msg.sender].length - cursor) {
+            length = buyStakesOfBuyer[msg.sender].length - cursor;
+        }
+
+        BuyStake[] memory values = new BuyStake[](length);
+        for (uint i = 0; i < length; i++) {
+            values[i] = buyStakesOfBuyer[msg.sender][cursor + i];
+        }
+
+        return (values, cursor + length);
+    }
+
+    function fetchPageSellStakes(uint cursor, uint howMany)
+    external
+    view
+    returns (SellStake[] memory values, uint newCursor)
+    {
+        require(msg.sender != address(0), "Invalid Addresss");
+
+        uint length = howMany;
+        if (length > sellStakesOfSeller[msg.sender].length - cursor) {
+            length = sellStakesOfSeller[msg.sender].length - cursor;
+        }
+
+        SellStake[] memory values = new SellStake[](length);
+        for (uint i = 0; i < length; i++) {
+            values[i] = sellStakesOfSeller[msg.sender][cursor + i];
+        }
+
+        return (values, cursor + length);
+    }
+
 }
 
