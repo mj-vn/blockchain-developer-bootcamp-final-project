@@ -82,16 +82,16 @@ contract Order is Ownable, AccessControl{
             address _sellerAddress,
             string memory  _sellerEmail,
             // Think Abount Use the below varivale
-            bytes memory _itemPublicKey
+            string memory _itemPublicKey
         ) = _itemContract.getItemIdStaking(_itemId);
         
             // For check if item exist or not with address default value
-        require(_sellerAddress == address(0), "Item Not Found");
+        require(_sellerAddress != address(0), "Item Not Found");
 
-        require(keccak256(abi.encodePacked(_itemState)) != keccak256(abi.encodePacked("Active")), "Item is not available");
-        require(_price != msg.value, "Invalid amount to be deposited");
+        require(keccak256(abi.encodePacked(_itemState)) == keccak256(abi.encodePacked("Active")), "Item is not available");
+        require(_price == msg.value, "Invalid amount to be deposited");
         
-        require(bytes(_buyerLocationAddress).length > 1100, "Address Should be smaller than 1100 chrachter");
+        require(bytes(_buyerLocationAddress).length < 1100, "Address Should be smaller than 1100 chrachter");
 
         OrderStruct memory _order = OrderStruct({
         Id: orderCount.current(),
@@ -131,7 +131,7 @@ contract Order is Ownable, AccessControl{
         OrderStruct memory _order = orders[_orderId];
 
         // For check if order exist or not with address default value
-        require(_order.buyerAddress == address(0), "Order Not Found");
+        require(_order.buyerAddress != address(0), "Order Not Found");
 
         if (_order.state == State.PendStake) {
             orderState = "Pending Stake";
@@ -226,7 +226,7 @@ contract Order is Ownable, AccessControl{
         OrderStruct storage _order = orders[_orderId];
 
         // For check if order exist or not with address default value
-        require(_order.sellerAddress == address(0), "Order Not Found");
+        require(_order.sellerAddress != address(0), "Order Not Found");
 
         _order.state = State.Delivered;
 

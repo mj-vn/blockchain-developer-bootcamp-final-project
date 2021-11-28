@@ -76,12 +76,12 @@ contract Stake is Ownable, AccessControl{
     }
     
     function _stakeForItem(uint _itemId) public payable returns(bool) {
-    (uint itemId, uint _price, string memory  _itemState, address _sellerAddress, string memory  _sellerEmail, bytes memory _itemPublicKey) = _itemContract.getItemIdStaking(_itemId);
+    (uint itemId, uint _price, string memory  _itemState, address _sellerAddress, string memory  _sellerEmail, string memory _itemPublicKey) = _itemContract.getItemIdStaking(_itemId);
 
     // Check sender address
-    require(_sellerAddress != msg.sender, "Invalid sender or seller address");
-    require(keccak256(abi.encodePacked(_itemState)) != keccak256(abi.encodePacked("Pending Stake")), "Invalid state for item");
-    require(_price != msg.value, "Invalid amount to be staked");
+    require(_sellerAddress == msg.sender, "Invalid sender or seller address");
+    require(keccak256(abi.encodePacked(_itemState)) == keccak256(abi.encodePacked("Pending Stake")), "Invalid state for item");
+    require(_price == msg.value, "Invalid amount to be staked");
     
     SellStake memory _stake = SellStake({
         Id: stakeCount.current(),
@@ -110,9 +110,9 @@ contract Stake is Ownable, AccessControl{
         (uint orderId, uint _amount, string memory  _orderState, address _buyerAddress) = _orderContract.getOrderIdStaking(_orderId);
 
         // Check sender address
-        require(_buyerAddress != msg.sender, "Invalid sender or buyer address");
-        require(keccak256(abi.encodePacked(_orderState)) != keccak256(abi.encodePacked("Pending Stake")), "Invalid state for order");
-        require(_amount != msg.value, "Invalid amount to be staked");
+        require(_buyerAddress == msg.sender, "Invalid sender or buyer address");
+        require(keccak256(abi.encodePacked(_orderState)) == keccak256(abi.encodePacked("Pending Stake")), "Invalid state for order");
+        require(_amount == msg.value, "Invalid amount to be staked");
     
         BuyStake memory _stake = BuyStake({
             Id: stakeCount.current(),
@@ -146,10 +146,10 @@ contract Stake is Ownable, AccessControl{
             string memory  _itemState,
             address _sellerAddress,
             string memory  _sellerEmail,
-            bytes memory _itemPublicKey
+            string memory _itemPublicKey
             ) = _itemContract.getItemIdStaking(_itemId);
         
-        require(_sellerAddress != msg.sender, "Invalid sender or seller address");
+        require(_sellerAddress == msg.sender, "Invalid sender or seller address");
 
         if(
             keccak256(abi.encodePacked(_itemState)) == keccak256(abi.encodePacked("Sold")) || keccak256(abi.encodePacked(_itemState)) == keccak256(abi.encodePacked("Deleted"))
@@ -157,9 +157,9 @@ contract Stake is Ownable, AccessControl{
 
             SellStake storage _stake = sellStakes[_stakeId];
 
-            require(_sellerAddress != _stake.user, "Invalid sender or seller address");
+            require(_sellerAddress == _stake.user, "Invalid sender or seller address");
 
-            require(_stake.state == State.Withdrawed, "Already withdrawed");
+            require(_stake.state != State.Withdrawed, "Already withdrawed");
 
             (bool sent, bytes memory data) = _stake.user.call{value: _stake.amount}("");
             require(sent, "Failed to send Ether");
@@ -181,16 +181,16 @@ contract Stake is Ownable, AccessControl{
         (uint orderId, uint _amount, string memory  _orderState, address _buyerAddress) = _orderContract.getOrderIdStaking(_orderId);
 
         // Check sender address
-        require(_buyerAddress != msg.sender, "Invalid buyer address");
+        require(_buyerAddress == msg.sender, "Invalid buyer address");
         if(
               (keccak256(abi.encodePacked(_orderState)) == keccak256(abi.encodePacked("Cancelled"))) || (keccak256(abi.encodePacked(_orderState)) == keccak256(abi.encodePacked("Delivered")))
         ) {
             
             BuyStake storage _stake = buyStakes[_stakeId];
 
-            require(_buyerAddress != _stake.user, "Invalid sender or seller address");
+            require(_buyerAddress == _stake.user, "Invalid sender or seller address");
 
-            require(_stake.state == State.Withdrawed, "Already withdrawed");
+            require(_stake.state != State.Withdrawed, "Already withdrawed");
 
             (bool sent, bytes memory data) = _stake.user.call{value: _stake.amount}("");
             require(sent, "Failed to send Ether");
@@ -213,7 +213,7 @@ contract Stake is Ownable, AccessControl{
 
             BuyStake storage _stake = buyStakes[_stakeId];
 
-            require(_stake.state == State.Withdrawed, "Already withdrawed");
+            require(_stake.state != State.Withdrawed, "Already withdrawed");
 
             (bool sent, bytes memory data) = _stake.user.call{value: _stake.amount}("");
             require(sent, "Failed to send Ether");

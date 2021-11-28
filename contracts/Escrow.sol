@@ -87,7 +87,7 @@ contract Escrow is Ownable, AccessControl{
 
         EscrowStruct storage _escrow = escrowOfBuyer[_buyerAddress][_orderId];
 
-        require(_escrow.state == State.Withdrawed, "Already withdrawed");
+        require(_escrow.state != State.Withdrawed, "Already withdrawed");
 
         (bool sent, bytes memory data) = _escrow.buyerAddress.call{value: _escrow.amount }("");
         require(sent, "Failed to send Ether");
@@ -107,7 +107,7 @@ contract Escrow is Ownable, AccessControl{
 
         EscrowStruct storage _escrow = escrowOfSeller[_sellerAddress][_orderId];
 
-        require(_escrow.state == State.Withdrawed, "Already withdrawed");
+        require(_escrow.state != State.Withdrawed, "Already withdrawed");
 
         (bool sent, bytes memory data) = _escrow.sellerAddress.call{value: _escrow.amount}("");
         require(sent, "Failed to send Ether");

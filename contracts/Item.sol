@@ -26,8 +26,8 @@ contract Item is Ownable, AccessControl{
         address payable sellerAddress;
         string sellerLocation;
         string sellerEmail;
-        bytes sellerPublicKey;
-        bytes pictureIPFSHash;
+        string sellerPublicKey;
+        string pictureIPFSHash;
         uint itemesOfAddressArray;
     }
 
@@ -57,16 +57,16 @@ contract Item is Ownable, AccessControl{
         string memory _description,
         string memory _location,
         string memory _email,
-        bytes memory _publicKey,
-        bytes memory _pictureHash
+        string memory _publicKey,
+        string memory _pictureHash
       ) public returns (bool) {
 
-        require(bytes(_title).length > 40, "Title length can not be more than 40 chracters");
-        require(bytes(_description).length > 350, "Description length can not be more than 350 chracters");
-        require(bytes(_location).length > 50, "Location length can not be more than 50 chracters");
+        require(bytes(_title).length < 40, "Title length can not be more than 40 chracters");
+        require(bytes(_description).length < 350, "Description length can not be more than 350 chracters");
+        require(bytes(_location).length < 50, "Location length can not be more than 50 chracters");
         // Should validate email
-        require(bytes(_publicKey).length != 128, "Public key length can not be more than 128 chracters");
-        require(bytes(_pictureHash).length != 48, "Location length can not be more than 48 chracters");
+        require(bytes(_publicKey).length == 44, "Public key length can not be more than 128 chracters");
+        require(bytes(_pictureHash).length == 46, "Location length can not be more than 48 chracters");
 
         ItemStruct memory _item = ItemStruct({
         Id: itemCount.current(),
@@ -95,7 +95,7 @@ contract Item is Ownable, AccessControl{
   }
 
     function fetchItem(uint _itemId) public view
-     returns (string memory name, uint price, uint state, address seller, string memory _email, bytes memory _publicKey)
+     returns (string memory name, uint price, uint state, address seller, string memory _email, string memory _publicKey)
       {
         return (
                 items[_itemId].title,
@@ -108,7 +108,7 @@ contract Item is Ownable, AccessControl{
        }
 
     function getItemIdStaking(uint _itemId) external view onlyCaller
-     returns (uint itemId, uint price, string memory state, address seller, string memory sellerEmail, bytes memory sellerPublicKey)
+     returns (uint itemId, uint price, string memory state, address seller, string memory sellerEmail, string memory sellerPublicKey)
       { 
         string memory itemState;
 
@@ -142,7 +142,7 @@ contract Item is Ownable, AccessControl{
         if (keccak256(abi.encodePacked("Pending Stake")) == keccak256(abi.encodePacked(_state))) {
             itemState = State.PendStatke;
         } else if (keccak256(abi.encodePacked("Active")) == keccak256(abi.encodePacked(_state))) {
-            require(_item.state == State.Deleted, "You can not Activate a deleted post");
+            require(_item.state != State.Deleted, "You can not Activate a deleted post");
 
             itemState = State.Active;
         } else if (keccak256(abi.encodePacked("Sold")) == keccak256(abi.encodePacked(_state))) {
@@ -166,7 +166,7 @@ contract Item is Ownable, AccessControl{
       { 
         ItemStruct storage _item = items[_itemId];
 
-        require(_item.state != State.Active, "You can not delete this item");
+        require(_item.state == State.Active, "You can not delete this item");
 
         _item.state = State.Deleted;
 
