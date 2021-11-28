@@ -39,9 +39,9 @@ contract Stake is Ownable, AccessControl{
 
     mapping(uint => SellStake) public sellStakes;
 
-    mapping(uint => uint) public buyStakesIdItemId;
+    mapping(uint => uint) public buyStakesIdOrderId;
 
-    mapping(uint => uint) public sellStakesIdOrderId;
+    mapping(uint => uint) public sellStakesIdItemId;
 
     mapping(address => SellStake[] ) public sellStakesOfSeller;
     
@@ -79,7 +79,7 @@ contract Stake is Ownable, AccessControl{
 
     sellStakes[stakeCount.current()] = _stake;
 
-    buyStakesIdItemId[_itemId] = stakeCount.current();
+    sellStakesIdItemId[_itemId] = stakeCount.current();
 
     stakeCount.increment();
 
@@ -104,7 +104,7 @@ contract Stake is Ownable, AccessControl{
 
         buyStakes[stakeCount.current()] = _stake;
 
-        sellStakesIdOrderId[_orderId] = stakeCount.current();
+        buyStakesIdOrderId[_orderId] = stakeCount.current();
 
         stakeCount.increment();
 
@@ -115,9 +115,9 @@ contract Stake is Ownable, AccessControl{
         return true;
     }
 
-    function refundStakeToSeller(uint _itemId, uint _stakeId, address _sellerAddress) external onlyCaller returns(bool) {
+    function refundStakeToSeller(uint _itemId, address _sellerAddress) external onlyCaller returns(bool) {
 
-        uint _stakeId = buyStakesIdItemId[_itemId];
+        uint _stakeId = sellStakesIdItemId[_itemId];
         
         SellStake storage _stake = sellStakes[_stakeId];
 
@@ -138,7 +138,7 @@ contract Stake is Ownable, AccessControl{
 
     function refundStakeToBuyer(uint _orderId, address _buyerAddress) external onlyCaller returns (bool) {
 
-            uint _stakeId = sellStakesIdOrderId[_orderId];
+            uint _stakeId = buyStakesIdOrderId[_orderId];
 
             BuyStake storage _stake = buyStakes[_stakeId];
 
@@ -155,5 +155,47 @@ contract Stake is Ownable, AccessControl{
 
             return true;
     }
+
+
+    function fetchPageBuyStakes(uint cursor, uint howMany)
+    external
+    view
+    returns (BuyStake[] memory values, uint newCursor)
+    {
+        require(msg.sender != address(0), "Invalid Addresss");
+
+        uint length = howMany;
+        if (length > buyStakesOfBuyer[msg.sender].length - cursor) {
+            length = buyStakesOfBuyer[msg.sender].length - cursor;
+        }
+
+        BuyStake[] memory values = new BuyStake[](length);
+        for (uint i = 0; i < length; i++) {
+            values[i] = buyStakesOfBuyer[msg.sender][cursor + i];
+        }
+
+        return (values, cursor + length);
+    }
+
+    function fetchPageSellStakes(uint cursor, uint howMany)
+    external
+    view
+    returns (SellStake[] memory values, uint newCursor)
+    {
+        require(msg.sender != address(0), "Invalid Addresss");
+
+        uint length = howMany;
+        if (length > sellStakesOfSeller[msg.sender].length - cursor) {
+            length = sellStakesOfSeller[msg.sender].length - cursor;
+        }
+
+        SellStake[] memory values = new SellStake[](length);
+        for (uint i = 0; i < length; i++) {
+            values[i] = sellStakesOfSeller[msg.sender][cursor + i];
+        }
+
+        return (values, cursor + length);
+    }
+
 }
 

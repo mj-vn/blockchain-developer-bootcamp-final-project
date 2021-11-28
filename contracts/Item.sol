@@ -27,18 +27,19 @@ contract Item is Ownable, AccessControl{
         string description;
         address payable sellerAddress;
         string sellerCountry;
-        string sellerCity;
         string sellerEmail;
         string sellerPublicKey;
         string pictureIPFSHash;
         uint itemesOfAddressArray;
+        uint itemssArrayIndex;
     }
 
+    ItemStruct[] public itemsArray;
     mapping(uint => ItemStruct) public items;
 
     mapping(address => ItemStruct[]) public itemesOfAddress;
 
-    event ItemAdded(uint itemId, string title, State state,  address seller);
+    event ItemAdded(uint indexed itemId, string title, State state,  address seller, string city);
 
     modifier onlyCaller() {
         require(hasRole(CALLERS, msg.sender), "Not Allowed to call this function");
@@ -86,11 +87,11 @@ contract Item is Ownable, AccessControl{
         description: _description,
         sellerAddress: payable(msg.sender),
         sellerCountry: _country,
-        sellerCity: _city,
         sellerEmail: _email,
         sellerPublicKey: _publicKey,
         pictureIPFSHash: _pictureHash,
-        itemesOfAddressArray: itemesOfAddress[msg.sender].length
+        itemesOfAddressArray: itemesOfAddress[msg.sender].length,
+        itemssArrayIndex: itemsArray.length
         });
         
         items[itemCount.current()] = _item;
@@ -98,9 +99,10 @@ contract Item is Ownable, AccessControl{
         itemCount.increment();
 
         itemesOfAddress[msg.sender].push(_item);
+        itemsArray.push(_item);
         _stakeContract._stakeForItem{value: msg.value}(_item.Id, msg.sender);
 
-        emit ItemAdded(itemCount.current() - 1, _item.title, _item.state, _item.sellerAddress);
+        emit ItemAdded(itemCount.current() - 1, _item.title, _item.state, _item.sellerAddress, _city);
 
         return true;
   }
@@ -114,8 +116,7 @@ contract Item is Ownable, AccessControl{
         string memory _email,
         string memory _publicKey,
         string memory _pictureHash, 
-        string memory _country, 
-        string memory _city
+        string memory _country
     )
       {
         ItemStruct memory _item = items[_itemId];
@@ -128,8 +129,7 @@ contract Item is Ownable, AccessControl{
                 _item.sellerEmail,
                 _item.sellerPublicKey,
                 _item.pictureIPFSHash,
-                _item.sellerCountry,
-                _item.sellerCity
+                _item.sellerCountry
             );
        }
 
@@ -180,6 +180,7 @@ contract Item is Ownable, AccessControl{
         _item.state = itemState;
 
         itemesOfAddress[_item.sellerAddress][_item.itemesOfAddressArray].state = itemState;
+        itemsArray[_item.itemssArrayIndex].state = State.Deleted;
 
         return (true);
      }
@@ -194,8 +195,58 @@ contract Item is Ownable, AccessControl{
         _item.state = State.Deleted;
 
         itemesOfAddress[msg.sender][_item.itemesOfAddressArray].state = State.Deleted;
+        itemsArray[_item.itemssArrayIndex].state = State.Deleted;
 
         return (true);
-     }
+    }
+
+    function fetchPageDescending(uint cursor, uint howMany)
+    external
+    view
+    returns (ItemStruct[] memory values, int newCursor, uint length)
+    {
+        uint length = howMany;
+        if (length > itemsArray.length + cursor) {
+            length = itemsArray.length + cursor;
+        }
+
+        ItemStruct[] memory values = new ItemStruct[](length);
+        for (uint i = 0; i < length; i++) {
+            if (cursor >= i){
+                values[i] = itemsArray[cursor - i];
+            } else {
+                break;
+            }
+        }
+
+        // uint memory _newCursor;
+
+        return (values, int(int(cursor) - int(length)), length);
+    }
+    function fetchPageAscending(uint cursor, uint howMany)
+    external
+    view
+    returns (ItemStruct[] memory values, uint newCursor)
+    {
+        uint length = howMany;
+        if (length > itemsArray.length - cursor) {
+            length = itemsArray.length - cursor;
+        }
+
+        ItemStruct[] memory values = new ItemStruct[](length);
+        for (uint i = 0; i < length; i++) {
+            values[i] = itemsArray[cursor + i];
+        }
+
+        return (values, cursor + length);
+    }
+
+    function getItemsArrayLength()
+    external
+    view
+    returns (uint length)
+    {
+        return (itemsArray.length);
+    }
 }
 

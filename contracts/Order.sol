@@ -201,5 +201,45 @@ contract Order is Ownable, AccessControl{
 
         return (true);
     }
+
+    function fetchPageSeller(uint cursor, uint howMany)
+    external
+    view
+    returns (OrderStruct[] memory values, uint newCursor)
+    {
+        require(msg.sender != address(0), "Invalid Addresss");
+
+        uint length = howMany;
+        if (length > orderOfSeller[msg.sender].length - cursor) {
+            length = orderOfSeller[msg.sender].length - cursor;
+        }
+
+        OrderStruct[] memory values = new OrderStruct[](length);
+        for (uint i = 0; i < length; i++) {
+            values[i] = orderOfSeller[msg.sender][cursor + i];
+        }
+
+        return (values, cursor + length);
+    }
+
+    function fetchPageBuyer(uint cursor, uint howMany)
+    external
+    view
+    returns (OrderStruct[] memory values, uint newCursor)
+    {
+        require(msg.sender != address(0), "Invalid Addresss");
+
+        uint length = howMany;
+        if (length > orderOfBuyer[msg.sender].length - cursor) {
+            length = orderOfBuyer[msg.sender].length - cursor;
+        }
+
+        OrderStruct[] memory values = new OrderStruct[](length);
+        for (uint i = 0; i < length; i++) {
+            values[i] = orderOfBuyer[msg.sender][cursor + i];
+        }
+
+        return (values, cursor + length);
+    }
 }
 
